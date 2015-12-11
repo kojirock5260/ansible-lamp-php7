@@ -1,0 +1,132 @@
+---
+# Ansible playbook for a Phergie PHP IRC bot server.
+#
+# @author Jeff Geerling (2014).
+
+- hosts: php7-lamp
+  sudo: yes
+  vars:
+    - mysql_root_password: mysqlpass
+
+  tasks:
+    - name: Update Yum
+      yum: name=* state=latest
+
+    - name: Add Yum Repositories
+      yum: name=http://rpms.famillecollet.com/enterprise/remi-release-7.rpm state=present
+
+    - name: Install Require Tools
+      yum: name={{ item }} state=present
+      with_items:
+        - gcc
+        - kernel-devel
+        - perl
+        - git
+        - wget
+        - curl-devel
+        - vim
+        - tree
+        - man
+        - unzip
+        - libselinux-python
+
+    - name: Check SElinux
+      shell: "getenforce"
+      register: check_selinux
+      changed_when: false
+      always_run: yes
+
+    - name: Disable Selinux
+      selinux: state=disabled
+      when: check_selinux.stdout == 'Enforcing'
+
+    - name: Setup LocalTime For Japan
+      copy: src=/usr/share/zoneinfo/Asia/Tokyo dest=/etc/localtime owner=root group=root
+
+    - name: Stop Iptables
+      service: name=firewall state=stopped enabled=no
+
+    - name: Install PHP
+      yum: name={{ item }} enablerepo=remi-php70 state=present
+      with_items:
+        - php
+        - php-mbstring
+        - php-devel
+        - php-opcache
+        - php-soap
+        - php-pdo
+        - php-mcrypt
+        - php-pecl-xdebug
+        - php-xml
+        - php-mysql
+
+    - name: Get PHP Timezone Setting
+      shell: grep 'date.timezone =' /etc/php.ini
+      register: php_timezone_setting
+      changed_when: false
+      always_run: yes
+
+    - name: Update php.ini
+      shell: sed -i -e "s/;date.timezone =/date.timezone = Asia\/Tokyo/g" /etc/php.ini
+      when: php_timezone_setting.stdout == ';date.timezone ='
+
+    - name: Add MySQL Yum Repository
+      yum: name=http://dev.mysql.com/get/mysql-community-release-el6-5.noarch.rpm state=present
+
+    - name: Install MySQL
+      yum: name={{ item }} enablerepo=mysql56-community state=present
+      with_items:
+        - MySQL-python
+        - mysql
+        - mysql-server
+        - mysql-devel
+
+    - name: Search mysql Directory
+      shell: find /var/log/ -name 'mysql' | wc -l
+      register: search_mysql_log_directory
+      changed_when: false
+      always_run: yes
+
+    - name: Start MySQL
+      service: name=mysqld state=started
+
+    - name: Delete Anonymous MySQL Server User For Localhost
+      action: mysql_user user="" state="absent"
+      when: search_mysql_log_directory.stdout == '0'
+
+    - name: Remove The MySQL Test Database
+      action: mysql_db db=test state=absent
+      when: search_mysql_log_directory.stdout == '0'
+
+    - name: Change Root User Password On First Run
+      mysql_user: login_user=root login_password='' name=root password=mysqlpass priv=*.*:ALL,GRANT host={{ item }}
+      with_items:
+        - 127.0.0.1
+        - ::1
+        - localhost
+      when: search_mysql_log_directory.stdout == '0'
+
+    - name: Create Mysql Log Directory
+      file: path=/var/log/mysql state=directory owner=mysql group=mysql mode=0755
+
+    - name: Start MySQL
+      service: name=mysqld state=started enabled=yes
+      notify:
+        - Restart MySQL
+
+    - name: Start MySQL
+      service: name=mysqld state=started enabled=yes
+      notify:
+        - Restart MySQL
+
+    - name: Start Apache
+      service: name=httpd state=started enabled=yes
+      notify:
+        - Restart Apache
+
+  handlers:
+    - name: Restart Apache
+      service: name=httpd state=restarted
+
+    - name: Restart MySQL
+      service: name=mysqld state=restarted
