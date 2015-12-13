@@ -14,6 +14,7 @@ Vagrant.configure(2) do |config|
   config.vm.provision "ansible" do |ansible|
     ansible.playbook = "provisioning/playbook.yml"
     ansible.inventory_path = "provisioning/inventory"
+    ansible.extra_vars = "@provisioning/project_vars.yml"
     ansible.sudo = true
     ansible.limit = 'all'
   end
