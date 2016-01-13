@@ -1,8 +1,4 @@
 ---
-# Ansible playbook for a Phergie PHP IRC bot server.
-#
-# @author Jeff Geerling (2014).
-
 - hosts: php7-lamp
   sudo: yes
   tasks:
